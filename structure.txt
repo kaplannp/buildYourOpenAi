@@ -1,0 +1,6 @@
+You need something (a class?) to communicate with the openai API
+
+You need an html template for the view.
+
+You need a controller, probably in the form of Flask interacting with elements
+of the template
