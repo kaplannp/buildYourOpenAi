@@ -4,3 +4,7 @@ You need an html template for the view.
 
 You need a controller, probably in the form of Flask interacting with elements
 of the template
+
+I propose a file upload option that lets you search and upload. I propose also
+a file list that shows the files you've got uploaded, and a way to select and
+delete them. You should also be able to select and train on them. 
