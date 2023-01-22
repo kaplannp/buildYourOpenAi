@@ -81,9 +81,13 @@ class ClearButtonHandler:
         return render_template("index.html", responses=[])
 
 class FileListHandler:
+    #TODO this class is starting to get large. You may wish to pull out
+    # model managing from file managing from training queue.
+
     def __init__(self, apiManager):
         self._apiManager = apiManager
         self._fileData = []
+        self._fineTunes = []
 
     def handle(self, request):
         if "refresh" in request.form:
@@ -91,8 +95,14 @@ class FileListHandler:
         if "upload" in request.form:
             self._upload()
         if "train" in request.form:
-            self._train()
-        return render_template("index.html", files=self.getFilenames())
+            self._train(request)
+        return render_template("index.html", files=self.getFilenames(), models=self.getModelnames())
+
+    def getModelnames(self):
+        modelnames = set()
+        for fineTuneData in self._fineTunes:
+            modelnames.add(fineTuneData["fine_tuned_model"])
+        return modelnames
 
     def getFilenames(self):
         filenames = []
@@ -103,9 +113,27 @@ class FileListHandler:
     def _refresh(self):
         resp = self._apiManager.listFiles()
         self._fileData = resp["data"]
+        resp = self._apiManager.listFineTunes()
+        self._fineTunes = resp["data"]
     
-    def _train(self):
-        pass
+    #TODO gotta refresh models automatically on startup
+    def _train(self, request):
+        #TODO considering making the checkbox a multiple choice
+        #TODO this is untested. Difficult to make sure that the request has
+        #gone through without being able to either monitor the finetunes, or
+        #being able to run tests with the model
+        trainFile = ""
+        for reqFileId in request.form.keys():
+            for filenamePair in self.getFilenames():
+                fileId = filenamePair[0]
+                if fileId == reqFileId:
+                    trainFile = reqFileId
+                    break
+        assert(trainFile != "") #you did't find a file
+                    
+        model = request.form["model"]
+        self._apiManager.train(model, trainFile)
+
     
     def _upload(self):
         fileStorage = request.files["fileChooser"]

@@ -29,6 +29,12 @@ class ApiManager:
     def listFiles(self):
         return openai.File.list()
 
+    def listFineTunes(self):
+        return openai.FineTune.list()
+
+    def train(self, model, filename):
+        openai.FineTune.create(training_file=filename, model=model)
+
         
 #print(promptAi("5+5"))
 #resp = uploadFile("sampleData.json")
