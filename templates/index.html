@@ -30,7 +30,7 @@
         <label for="{{ file[0] }}"> {{ file[1] }} </label><br>
       {% endfor %}
       <select name="model">
-        <option value="None">None</option>
+        <option value="createModel">Create Model</option>
 	{% for model in models %}
 	  <option value="{{model}}">{{model}}</option>
 	{% endfor %}

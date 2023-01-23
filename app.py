@@ -21,9 +21,10 @@ def isValidFilename(filename):
 
 class Controller:
 
-    def __init__(self, apiManager):
+    def __init__(self, apiManager, templateGen):
         self._handlers = {}
         self._apiManager = apiManager
+        self._templateGen = templateGen
 
     def index(self, request):
         if request.method=="GET":
@@ -42,13 +43,41 @@ class Controller:
     def post(self, request):
         for name in request.form.keys():
             if name in self._handlers:
-                return self._handlers[name].handle(request)
+                self._handlers[name].handle(request, self._templateGen)
+                return self._templateGen.render()
 
     def registerHandler(self, name, handler):
         self._handlers[name] = handler
 
     def removeHandler(self, name):
         del self._handlers[name]
+
+class TemplateRenderer:
+    '''
+    This class is responsible for maintaining state of all of the variables that
+    are associated with the template rendering. Handlers modify the
+    attributes of this class, and it takes care of rendering the template.
+    The setable attributes of this class directly correspond to the attributes
+    of the template.
+
+    You might consider making this more general, it takes in a list of 
+    attributes to maintain, and the name of a template. Then you make a new one
+    for each template
+    '''
+
+
+    def render(self):
+        return render_template("index.html", files=filenames)
+
+    def __init__(self, template, attrs):
+        self._TEMPLATE = template
+        self._params = {attr:[] for attr in attrs}
+    
+    def set(self, param, val):
+        self._params[param] = val
+
+    def render(self):
+        return render_template(self._TEMPLATE, **self._params)
 
 class SubmitButtonHandler:
 
@@ -61,14 +90,14 @@ class SubmitButtonHandler:
         self._responses = []
         self._prompts = []
 
-    def handle(self, request):
+    def handle(self, request, templateGen):
         prompt = request.form.get('textbox')
         response = self._apiManager.promptAi(prompt)
         completion = response["choices"][0]["text"]
         self._prompts.append(prompt)
         self._responses.append(completion)
         conversation=zip(self._prompts, self._responses)
-        return render_template("index.html", conversation=conversation)
+        templateGen.set("conversation", conversation)
 
 class ClearButtonHandler:
 
@@ -76,9 +105,9 @@ class ClearButtonHandler:
         #note you need submit Button handler because you should clear it's list
         self._submitButtonHandler = submitButtonHandler
 
-    def handle(self, request):
+    def handle(self, request, templateGen):
         self._submitButtonHandler.clear()
-        return render_template("index.html", responses=[])
+        templateGen.set("conversation", [])
 
 class FileListHandler:
     #TODO this class is starting to get large. You may wish to pull out
@@ -89,14 +118,15 @@ class FileListHandler:
         self._fileData = []
         self._fineTunes = []
 
-    def handle(self, request):
+    def handle(self, request, templateGen):
         if "refresh" in request.form:
             self._refresh()
         if "upload" in request.form:
             self._upload()
         if "train" in request.form:
             self._train(request)
-        return render_template("index.html", files=self.getFilenames(), models=self.getModelnames())
+        templateGen.set("files", self.getFilenames())
+        templateGen.set("models", self.getModelnames())
 
     def getModelnames(self):
         modelnames = set()
@@ -147,7 +177,10 @@ class FileListHandler:
 with open("apiKey", 'r') as file:
     apiKey = file.read()[:-1] #drop newline
     apiManager = ApiManager(apiKey)
-controller = Controller(apiManager)
+templateRenderer = TemplateRenderer("index.html",
+        ["template", "conversation", "files", "models"]
+        )
+controller = Controller(apiManager, templateRenderer)
 submitButtonHandler = SubmitButtonHandler(apiManager)
 clearButtonHandler = ClearButtonHandler(submitButtonHandler)
 fileListHandler = FileListHandler(apiManager)
