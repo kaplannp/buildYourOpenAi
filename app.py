@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+import json
 
 from flask import Flask, render_template, request
 from werkzeug.utils import secure_filename
@@ -10,6 +12,9 @@ app.config["UPLOAD_FOLDER"] = "UploadedFiles"
 
 if not os.path.exists("UploadedFiles"):
     os.mkdir("UploadedFiles")
+
+
+
 
 VALID_FILE_EXTENSIONS = {"json"}
 def isValidFilename(filename):
@@ -52,6 +57,50 @@ class Controller:
     def removeHandler(self, name):
         del self._handlers[name]
 
+class PersistentAppData(dict):
+    '''
+    This class is a dictionary that stores and reads data in json format from
+    the passed file. It only reads when it is instantiated, which is fine, just
+    don't go messing with it's file with ANYTHING. This class handles the
+    writes automatically on the set. You also can't currently have two of these
+    objects with same filename, and I haven't protected you against that. If
+    things get bigger you might implement generator pattern
+    '''
+
+    def __init__(self, dataFilename):
+        self._filepath = os.path.join("MetaData", dataFilename)
+        if not os.path.exists("MetaData"):
+            os.mkdir("MetaData")
+        if not os.path.exists(self._filepath):
+            with(open(self._filepath, 'w')) as fid:
+                fid.write("{}")
+        with open(self._filepath, 'r') as json_file:
+            d = json.load(json_file)
+            for key, value in d.items():
+                super().__setitem__(key, value)
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        with open(self._filepath, 'w') as file:
+            json.dump(self, file)
+
+    def invGet(self, inKey):
+        '''
+        This is slow, but I don't think it needs to be fast
+        '''
+        out = 'nokeyfoundidentifier39440133'
+        seenKey = False
+        for val, key in self.items():
+            if seenKey:
+                assert(inKey!=key), "duplicate key in inverse"
+            else:
+                if inKey == key:
+                    out = val
+                    seenKey=True
+        if not seenKey:
+            raise KeyError("key not in inverse")
+        return out
+
 class TemplateRenderer:
     '''
     This class is responsible for maintaining state of all of the variables that
@@ -92,7 +141,8 @@ class SubmitButtonHandler:
 
     def handle(self, request, templateGen):
         prompt = request.form.get('textbox')
-        response = self._apiManager.promptAi(prompt)
+        model = request.form.get("model")
+        response = self._apiManager.prompt(prompt, model=model)
         completion = response["choices"][0]["text"]
         self._prompts.append(prompt)
         self._responses.append(completion)
@@ -113,10 +163,11 @@ class FileListHandler:
     #TODO this class is starting to get large. You may wish to pull out
     # model managing from file managing from training queue.
 
-    def __init__(self, apiManager):
+    def __init__(self, apiManager, filenameLookup):
         self._apiManager = apiManager
         self._fileData = []
         self._fineTunes = []
+        self._filenameLookup = filenameLookup
 
     def handle(self, request, templateGen):
         if "refresh" in request.form:
@@ -125,6 +176,8 @@ class FileListHandler:
             self._upload()
         if "train" in request.form:
             self._train(request)
+        if "delete" in request.form:
+            self._delete(request)
         templateGen.set("files", self.getFilenames())
         templateGen.set("models", self.getModelnames())
 
@@ -137,7 +190,12 @@ class FileListHandler:
     def getFilenames(self):
         filenames = []
         for fileData in self._fileData:
-            filenames.append((fileData["id"], fileData["filename"]))
+            fileid = fileData["id"]
+            try:
+                filename = self._filenameLookup[fileid]
+            except KeyError:
+                filename = fileid
+            filenames.append((fileid, filename))
         return filenames
 
     def _refresh(self):
@@ -145,6 +203,22 @@ class FileListHandler:
         self._fileData = resp["data"]
         resp = self._apiManager.listFineTunes()
         self._fineTunes = resp["data"]
+
+    def _delete(self, request):
+        #the form.keys has other gunk too, so we compare it against filenames
+        #I was nice enough to throw an error if you can't find the country
+        delFile = ""
+        for reqFileId in request.form.keys():
+            for fileId, _ in self.getFilenames():
+                if fileId == reqFileId:
+                    delFile = reqFileId
+                    break
+        assert(delFile != "") #you did't find a file
+
+        #I think this should be fine because if the file was on the list,
+        #then it has definitely been uploaded, so you can delete it.
+        self._apiManager.deleteFile(delFile)
+        self._refresh()
     
     #TODO gotta refresh models automatically on startup
     def _train(self, request):
@@ -152,25 +226,31 @@ class FileListHandler:
         #TODO this is untested. Difficult to make sure that the request has
         #gone through without being able to either monitor the finetunes, or
         #being able to run tests with the model
+
+        #the form.keys has other gunk too, so we compare it against filenames
+        #I was nice enough to throw an error if you can't find the country
         trainFile = ""
         for reqFileId in request.form.keys():
-            for filenamePair in self.getFilenames():
-                fileId = filenamePair[0]
+            for fileId, _ in self.getFilenames():
                 if fileId == reqFileId:
                     trainFile = reqFileId
                     break
         assert(trainFile != "") #you did't find a file
                     
         model = request.form["model"]
-        self._apiManager.train(model, trainFile)
-
+        if model == "createModel":
+            self._apiManager.train(trainFile) #use default
+        else:
+            self._apiManager.train(model, trainFile)
     
     def _upload(self):
         fileStorage = request.files["fileChooser"]
+        #self._filenameLookup[filestorage.file
         assert(isValidFilename(fileStorage.filename)) #need to change for prod
         filename = secure_filename(fileStorage.filename)
         fileStorage.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         resp = self._apiManager.uploadFile(filename)
+        self._filenameLookup[resp['id']] = filename
         self._refresh()
 
 
@@ -183,12 +263,14 @@ templateRenderer = TemplateRenderer("index.html",
 controller = Controller(apiManager, templateRenderer)
 submitButtonHandler = SubmitButtonHandler(apiManager)
 clearButtonHandler = ClearButtonHandler(submitButtonHandler)
-fileListHandler = FileListHandler(apiManager)
+filenameLookup = PersistentAppData('filenames.json')
+fileListHandler = FileListHandler(apiManager, filenameLookup)
 controller.registerHandler("submitPrompt", submitButtonHandler)
 controller.registerHandler("clear", clearButtonHandler)
 controller.registerHandler("refresh", fileListHandler)
 controller.registerHandler("train", fileListHandler)
 controller.registerHandler("upload", fileListHandler)
+controller.registerHandler("delete", fileListHandler)
 
 @app.route("/", methods=("GET","POST"))
 def main():

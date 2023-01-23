@@ -13,6 +13,12 @@
       <button class="btn btn-default" type="submit" name="submitPrompt">
         submit
       </button>
+      <select name="model">
+        <option value="text-davinci-003">text-davinci-003 (default)</option>
+	{% for model in models %}
+	  <option value="{{model}}">{{model}}</option>
+	{% endfor %}
+      </select>
     </form>
     <form method="post" action="{{ url_for("main")}}">
       <button class="btn btn-default" type="submit" name="clear">
@@ -25,10 +31,12 @@
     <br>
     {% endfor %}
     <form method="post" action="{{ url_for("main")}}">
-      {% for file in files %}
-        <input type="checkbox" id="{{ file[0] }}" name="{{ file[0] }}">
-        <label for="{{ file[0] }}"> {{ file[1] }} </label><br>
-      {% endfor %}
+      <div class="form-check">
+        {% for file in files %}
+          <input type="radio" class="form-check-input" id="{{ file[0] }}" name="{{ file[0] }}">
+	  <label class="form-check-label" for="{{ file[0] }}"> {{ file[1] }} </label><br>
+        {% endfor %}
+      </div>
       <select name="model">
         <option value="createModel">Create Model</option>
 	{% for model in models %}
@@ -40,6 +48,9 @@
       </button>
       <button class="btn btn-default" type="submit" name="refresh">
         refresh
+      </button>
+      <button class="btn btn-default" type="submit" name="delete">
+        delete
       </button>
     </form>
     <form method="post" enctype="multipart/form-data" action="{{ url_for("main")}}">

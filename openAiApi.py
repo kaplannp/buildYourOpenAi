@@ -4,9 +4,9 @@ class ApiManager:
     def __init__(self, apiKey):
         openai.api_key = apiKey 
 
-    def promptAi(self, prompt):
+    def prompt(self, prompt, model="text-davinci-003"):
         response = openai.Completion.create(
-                model="text-davinci-003",
+                model=model,
                 prompt=prompt,
                 temperature=1.0
                 )
@@ -32,7 +32,7 @@ class ApiManager:
     def listFineTunes(self):
         return openai.FineTune.list()
 
-    def train(self, model, filename):
+    def train(self, filename, model="davinci"):
         openai.FineTune.create(training_file=filename, model=model)
 
         
