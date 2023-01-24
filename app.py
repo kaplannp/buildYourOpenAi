@@ -180,6 +180,7 @@ class FileListHandler:
             self._delete(request)
         templateGen.set("files", self.getFilenames())
         templateGen.set("models", self.getModelnames())
+        templateGen.set("fineTunes",self.getFineTunes())
 
     def getModelnames(self):
         modelnames = set()
@@ -193,10 +194,28 @@ class FileListHandler:
             fileid = fileData["id"]
             try:
                 filename = self._filenameLookup[fileid]
+                filenames.append((fileid, filename))
             except KeyError:
-                filename = fileid
-            filenames.append((fileid, filename))
+                print(fileid)
         return filenames
+    
+    def getFineTunes(self):
+        '''
+        creates a 2d array (list of lists) where each row is:
+          + finetune id
+          + modelProduced
+          + baseModel
+          + status
+        '''
+        fineTunes = []
+        for fineTune in self._fineTunes:
+            row = []
+            row.append(fineTune["id"])
+            row.append(fineTune["fine_tuned_model"])
+            row.append(fineTune["model"])
+            row.append(fineTune["status"])
+            fineTunes.append(row)
+        return fineTunes
 
     def _refresh(self):
         resp = self._apiManager.listFiles()
@@ -258,7 +277,7 @@ with open("apiKey", 'r') as file:
     apiKey = file.read()[:-1] #drop newline
     apiManager = ApiManager(apiKey)
 templateRenderer = TemplateRenderer("index.html",
-        ["template", "conversation", "files", "models"]
+        ["template", "conversation", "files", "models", "fineTunes"]
         )
 controller = Controller(apiManager, templateRenderer)
 submitButtonHandler = SubmitButtonHandler(apiManager)
