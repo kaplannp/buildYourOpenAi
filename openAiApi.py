@@ -33,7 +33,13 @@ class ApiManager:
         return openai.FineTune.list()
 
     def train(self, filename, model="davinci"):
-        openai.FineTune.create(training_file=filename, model=model)
+        return openai.FineTune.create(training_file=filename, model=model)
+
+    def deleteModel(self, modelName):
+        return openai.Model.delete(modelName)
+
+    def listModels(self):
+        return openai.Model.list()
 
         
 #print(promptAi("5+5"))
