@@ -1,0 +1,18 @@
+.header-table {
+	height: 300px;
+}
+.header-table thead th { 
+	position: sticky; 
+	top: 0; 
+	z-index: 1;
+	background-color: grey;
+}
+
+textarea {
+	width: 100%;
+}
+
+.conversation {
+	height: 500px;
+}
+
