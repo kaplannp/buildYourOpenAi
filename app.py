@@ -127,12 +127,10 @@ class PersistentAppData(dict):
         self._filepath = os.path.join("MetaData", dataFilename)
         if not os.path.exists("MetaData"):
             os.mkdir("MetaData")
-
         #make file if necessary
         if not os.path.exists(self._filepath):
             with(open(self._filepath, 'w')) as fid:
                 fid.write("{}")
-
         #load file
         with open(self._filepath, 'r') as json_file:
             d = json.load(json_file)
@@ -239,7 +237,7 @@ class SubmitButtonHandler(Handler):
         completion = response["choices"][0]["text"]
         self._prompts.append(prompt)
         self._responses.append(completion)
-        conversation=zip(self._prompts, self._responses)
+        conversation=list(zip(self._prompts, self._responses))
         templateGen.set("conversation", conversation)
 
 class ClearButtonHandler(Handler):
