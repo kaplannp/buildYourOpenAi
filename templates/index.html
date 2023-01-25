@@ -28,7 +28,6 @@
     {% for promptRespPair in conversation %}
     <h3> {{ promptRespPair[0] }} </h3>
     <p> {{ promptRespPair[1] }} </p>
-    <br>
     {% endfor %}
     </hr>
     <form method="post" action="{{ url_for("main")}}">

@@ -38,14 +38,14 @@ class Controller:
     @method registerHandler(name, handler) : register handler to listen for form
     @method removeHander(name) : remove a registered handler
     '''
-    #TODO see if you can remove apiManager
-    def __init__(self, apiManager, templateGen):
+    def __init__(self, templateGen, dataCache, dataParser):
         '''
         @param TemplateRenderer templateGen : template renderer for index page
         '''
         self._handlers = {}
         self._templateGen = templateGen
-        self._apiManager = apiManager
+        self._apiCache = dataCache
+        self._apiDataParser = dataParser
 
     def index(self, request):
         '''
@@ -64,12 +64,17 @@ class Controller:
         @param flask.Request request : the post or get request
         @returns html for index page
         '''
-        resp = self._apiManager.listFiles()
-        filenames = []
-        for fileData in resp["data"]:
-            filenames.append((fileData["id"], fileData["filename"]))
-        return render_template("index.html", files=filenames)
-
+        self._apiCache.refresh() 
+        filenames = self._apiDataParser.getFilenames(
+                self._apiCache.getFileData())
+        self._templateGen.set("files", filenames)
+        modelNames = self._apiDataParser.getModelnames(
+                self._apiCache.getModels())
+        self._templateGen.set("models", modelNames)
+        fineTunes = self._apiDataParser.getFineTunes(
+                self._apiCache.getFineTunes())
+        self._templateGen.set("fineTunes", fineTunes)
+        return self._templateGen.render()
 
     def post(self, request):
         '''
@@ -247,47 +252,54 @@ class ClearButtonHandler(Handler):
         self._submitButtonHandler.clear()
         templateGen.set("conversation", [])
 
-class FileListHandler(Handler):
-    #TODO this class is starting to get large. You may wish to pull out
-    # model managing from file managing from training queue.
+class ApiDataCache:
 
-    def __init__(self, apiManager, filenameLookup):
+    def __init__(self, apiManager):
         self._apiManager = apiManager
         self._fileData = []
         self._fineTunes = []
         self._models = []
+
+    def refresh(self):
+        self.refreshFileData()
+        self.refreshFineTunes()
+        self.refreshModels()
+
+    def refreshFileData(self):
+        resp = self._apiManager.listFiles()
+        self._fileData = resp["data"]
+
+    def refreshFineTunes(self):
+        resp = self._apiManager.listFineTunes()
+        self._fineTunes = resp["data"]
+
+    def refreshModels(self):
+        resp = self._apiManager.listModels()
+        self._models = resp["data"]
+
+    def getFileData(self):
+        return self._fileData
+
+    def getFineTunes(self):
+        return self._fineTunes
+
+    def getModels(self):
+        return self._models
+
+class ApiDataParser:
+
+    def __init__(self, filenameLookup):
         self._filenameLookup = filenameLookup
 
-    def handle(self, request, templateGen):
-        if "refresh" in request.form:
-            self._refresh()
-        if "upload" in request.form:
-            self._upload()
-        if "train" in request.form:
-            self._train(request)
-        if "deleteFile" in request.form:
-            self._delete(request)
-        if "deleteModel" in request.form:
-            self._deleteModel(request)
-        templateGen.set("files", self.getFilenames())
-        templateGen.set("models", self.getModelnames())
-        templateGen.set("fineTunes",self.getFineTunes())
-
-    def _deleteModel(self, request):
-        modelName = request.form["model"]
-        assert(modelName != "createModel")
-        resp = self._apiManager.deleteModel(modelName)
-        self._refresh()
-
-    def getModelnames(self):
-        modelnames = [model["id"] for model in self._models 
+    def getModelnames(self, respModels):
+        modelnames = [model["id"] for model in respModels 
                 if model["owned_by"] == USER]
         return modelnames
 
-    def getFilenames(self):
+    def getFilenames(self, respFileData):
         filenames = []
-        for fileData in self._fileData:
-            fileid = fileData["id"]
+        for fileDatum in respFileData:
+            fileid = fileDatum["id"]
             try:
                 filename = self._filenameLookup[fileid]
                 filenames.append((fileid, filename))
@@ -295,7 +307,7 @@ class FileListHandler(Handler):
                 print(fileid)
         return filenames
     
-    def getFineTunes(self):
+    def getFineTunes(self, respFineTunes):
         '''
         creates a 2d array (list of lists) where each row is:
           + finetune id
@@ -304,7 +316,7 @@ class FileListHandler(Handler):
           + status
         '''
         fineTunes = []
-        for fineTune in self._fineTunes:
+        for fineTune in respFineTunes:
             row = []
             row.append(fineTune["id"])
             row.append(fineTune["fine_tuned_model"])
@@ -313,20 +325,38 @@ class FileListHandler(Handler):
             fineTunes.append(row)
         return fineTunes
 
-    def _refresh(self):
-        resp = self._apiManager.listFiles()
-        self._fileData = resp["data"]
-        resp = self._apiManager.listFineTunes()
-        self._fineTunes = resp["data"]
-        resp = self._apiManager.listModels()
-        self._models = resp["data"]
 
-    def _delete(self, request):
+class DeleteModelHandler(Handler):
+
+    def __init__(self, apiManager, apiCache, dataParser):
+        self._apiManager = apiManager
+        self._apiCache = apiCache
+        self._apiDataParser = dataParser
+
+    def handle(self, request, templateGen):
+        modelName = request.form["model"]
+        assert(modelName != "createModel")
+        resp = self._apiManager.deleteModel(modelName)
+        self._apiCache.refreshModels()
+        modelNames = self._apiDataParser.getModelnames(
+                self._apiCache.getModels())
+        templateGen.set("models", modelNames)
+
+class DeleteFileHandler(Handler):
+    
+    def __init__(self, apiManager, apiCache, dataParser):
+        self._apiManager = apiManager
+        self._apiCache = apiCache
+        self._apiDataParser = dataParser
+
+    def handle(self, request, templateGen):
         #the form.keys has other gunk too, so we compare it against filenames
         #I was nice enough to throw an error if you can't find the country
         delFile = ""
+        filenames = self._apiDataParser.getFilenames(
+            self._apiCache.getFileData())
         for reqFileId in request.form.keys():
-            for fileId, _ in self.getFilenames():
+            for fileId, _ in filenames:
                 if fileId == reqFileId:
                     delFile = reqFileId
                     break
@@ -335,10 +365,19 @@ class FileListHandler(Handler):
         #I think this should be fine because if the file was on the list,
         #then it has definitely been uploaded, so you can delete it.
         self._apiManager.deleteFile(delFile)
-        self._refresh()
+        self._apiCache.refreshFileData()
+        filenames = self._apiDataParser.getFilenames(
+                self._apiCache.getFileData())
+        templateGen.set("files", filenames)
+
+class TrainHandler(Handler):
     
-    #TODO gotta refresh models automatically on startup
-    def _train(self, request):
+    def __init__(self, apiManager, apiCache, dataParser):
+        self._apiManager = apiManager
+        self._apiCache = apiCache
+        self._apiDataParser = dataParser
+
+    def handle(self, request, templateGen):
         #TODO considering making the checkbox a multiple choice
         #TODO this is untested. Difficult to make sure that the request has
         #gone through without being able to either monitor the finetunes, or
@@ -347,8 +386,10 @@ class FileListHandler(Handler):
         #the form.keys has other gunk too, so we compare it against filenames
         #I was nice enough to throw an error if you can't find the country
         trainFile = ""
+        filenames = self._apiDataParser.getFilenames(
+            self._apiCache.getFileData())
         for reqFileId in request.form.keys():
-            for fileId, _ in self.getFilenames():
+            for fileId, _ in filenames:
                 if fileId == reqFileId:
                     trainFile = reqFileId
                     break
@@ -358,17 +399,55 @@ class FileListHandler(Handler):
         if model == "createModel":
             self._apiManager.train(trainFile) #use default
         else:
-            self._apiManager.train(model, trainFile)
+            self._apiManager.train(trainFile, model)
+        self._apiCache.refreshFineTunes()
+        self._apiCache.refreshModels()
+        modelNames = self._apiDataParser.getModelnames(
+                self._apiCache.getModels())
+        templateGen.set("models", modelNames)
+        fineTunes = self._apiDataParser.getFineTunes(
+                self._apiCache.getFineTunes())
+        templateGen.set("fineTunes", fineTunes)
+
+class UploadHandler(Handler):
     
-    def _upload(self):
+    def __init__(self, apiManager, apiCache, dataParser, filenameLookup):
+        self._apiManager = apiManager
+        self._apiCache = apiCache
+        self._apiDataParser = dataParser
+        self._filenameLookup = filenameLookup
+
+    def handle(self, request, templateGen):
         fileStorage = request.files["fileChooser"]
-        #self._filenameLookup[filestorage.file
         assert(isValidFilename(fileStorage.filename)) #need to change for prod
         filename = secure_filename(fileStorage.filename)
+        assert(filename not in self._filenameLookup.values()),\
+                "Filename has already been uploaded. Please change name"
         fileStorage.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         resp = self._apiManager.uploadFile(filename)
         self._filenameLookup[resp['id']] = filename
-        self._refresh()
+        self._apiCache.refreshFileData()
+        filenames = self._apiDataParser.getFilenames(
+                self._apiCache.getFileData())
+        templateGen.set("files", filenames)
+
+class RefreshHandler(Handler):
+
+    def __init__(self, apiCache, apiDataParser):
+        self._apiCache = apiCache
+        self._apiDataParser = apiDataParser
+
+    def handle(self, request, templateGen):
+        self._apiCache.refresh()
+        filenames = self._apiDataParser.getFilenames(
+                self._apiCache.getFileData())
+        templateGen.set("files", filenames)
+        modelNames = self._apiDataParser.getModelnames(
+                self._apiCache.getModels())
+        templateGen.set("models", modelNames)
+        fineTunes = self._apiDataParser.getFineTunes(
+                self._apiCache.getFineTunes())
+        templateGen.set("fineTunes", fineTunes)
 
 with open("apiKey", 'r') as file:
     apiKey = file.read()[:-1] #drop newline
@@ -376,18 +455,24 @@ with open("apiKey", 'r') as file:
 templateRenderer = TemplateRenderer("index.html",
         ["template", "conversation", "files", "models", "fineTunes"]
         )
-controller = Controller(apiManager, templateRenderer)
+apiCache = ApiDataCache(apiManager)
+filenameLookup = PersistentAppData('filenames.json')
+apiProcessor = ApiDataParser(filenameLookup)
+controller = Controller(templateRenderer, apiCache, apiProcessor)
 submitButtonHandler = SubmitButtonHandler(apiManager)
 clearButtonHandler = ClearButtonHandler(submitButtonHandler)
-filenameLookup = PersistentAppData('filenames.json')
-fileListHandler = FileListHandler(apiManager, filenameLookup)
+deleteModelHandler = DeleteModelHandler(apiManager, apiCache, apiProcessor)
+deleteFileHandler = DeleteFileHandler(apiManager, apiCache, apiProcessor)
+trainHandler = TrainHandler(apiManager, apiCache, apiProcessor)
+refreshHandler = RefreshHandler(apiCache, apiProcessor)
+uploadHandler = UploadHandler(apiManager, apiCache, apiProcessor,filenameLookup)
 controller.registerHandler("submitPrompt", submitButtonHandler)
 controller.registerHandler("clear", clearButtonHandler)
-controller.registerHandler("refresh", fileListHandler)
-controller.registerHandler("train", fileListHandler)
-controller.registerHandler("upload", fileListHandler)
-controller.registerHandler("deleteFile", fileListHandler)
-controller.registerHandler("deleteModel", fileListHandler)
+controller.registerHandler("refresh", refreshHandler)
+controller.registerHandler("train", trainHandler)
+controller.registerHandler("upload", uploadHandler)
+controller.registerHandler("deleteFile", deleteFileHandler)
+controller.registerHandler("deleteModel", deleteModelHandler)
 
 @app.route("/", methods=("GET","POST"))
 def main():
