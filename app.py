@@ -146,6 +146,11 @@ class PersistentAppData(dict):
         super().__setitem__(key, value)
         with open(self._filepath, 'w') as file:
             json.dump(self, file)
+    
+    def delete(self, key):
+        del self[key]
+        with open(self._filepath, 'w') as file:
+            json.dump(self, file)
 
     def invGet(self, inKey):
         '''
@@ -242,22 +247,34 @@ class SubmitButtonHandler(Handler):
         self._responses = []
         self._prompts = []
 
+    def _generateFeed(self):
+        feed = []
+        for prompt, response in zip(self._prompts, self._responses):
+            feed.append(prompt)
+            feed.append(response)
+        return "\n".join(feed)
+            
+
     def handle(self, request, templateGen):
         '''
-        on submit of prompt, queries the API, then adds the response/prompt
+        on submit of prompt, queries the API with prompt being the latest input
+        you added and the whole conversation up to this point,
+        then adds the response/prompt
         pair to datastructures in this class. Finally sets the TemplateRenderer
         in accordance to those updated values.
         @param Request request: the post request object
         @param TemplateRenderer templateGen : the template generator to update
         '''
-        prompt = request.form.get('textbox')
+        latestInput = request.form.get('textbox')
+        prompt = "{}\n{}".format(self._generateFeed(), latestInput)
+        print(prompt)
         model = request.form.get("model")
         temperature = float(request.form.get("temperature"))
         nTokens = int(request.form.get("nTokens"))
         response = self._apiManager.prompt(
                 prompt, model=model, temperature=temperature, nTokens=nTokens)
         completion = response["choices"][0]["text"]
-        self._prompts.append(prompt)
+        self._prompts.append(latestInput)
         self._responses.append(completion)
         conversation=list(zip(self._prompts, self._responses))
         templateGen.set("conversation", conversation)
@@ -382,14 +399,21 @@ class ApiDataParser:
           + modelProduced
           + baseModel
           + status
+          + train file 1st
         '''
         fineTunes = []
         for fineTune in respFineTunes:
+            trainFileId = fineTune["training_files"][0]["id"]
+            try:
+                trainFilename = self._filenameLookup[trainFileId]
+            except:
+                trainFilename = "deleted"
             row = []
             row.append(fineTune["id"])
             row.append(fineTune["fine_tuned_model"])
             row.append(fineTune["model"])
             row.append(fineTune["status"])
+            row.append(trainFilename)
             fineTunes.append(row)
         return fineTunes
 
@@ -426,10 +450,11 @@ class DeleteModelHandler(Handler):
 
 class DeleteFileHandler(Handler):
     
-    def __init__(self, apiManager, apiCache, dataParser):
+    def __init__(self, apiManager, apiCache, dataParser, filenameLookup):
         self._apiManager = apiManager
         self._apiCache = apiCache
         self._apiDataParser = dataParser
+        self._filenameLookup = filenameLookup
 
     def handle(self, request, templateGen):
         #the form.keys has other gunk too, so we compare it against filenames
@@ -444,6 +469,7 @@ class DeleteFileHandler(Handler):
                     break
         assert(delFile != "") #you did't find a file
 
+        self._filenameLookup.delete(delFile)
         #I think this should be fine because if the file was on the list,
         #then it has definitely been uploaded, so you can delete it.
         self._apiManager.deleteFile(delFile)
@@ -545,7 +571,8 @@ controller = Controller(templateRenderer, apiCache, apiProcessor)
 submitButtonHandler = SubmitButtonHandler(apiManager)
 clearButtonHandler = ClearButtonHandler(submitButtonHandler)
 deleteModelHandler = DeleteModelHandler(apiManager, apiCache, apiProcessor)
-deleteFileHandler = DeleteFileHandler(apiManager, apiCache, apiProcessor)
+deleteFileHandler = DeleteFileHandler(
+        apiManager, apiCache, apiProcessor, filenameLookup)
 trainHandler = TrainHandler(apiManager, apiCache, apiProcessor)
 refreshHandler = RefreshHandler(apiCache, apiProcessor)
 uploadHandler = UploadHandler(apiManager, apiCache, apiProcessor,filenameLookup)
