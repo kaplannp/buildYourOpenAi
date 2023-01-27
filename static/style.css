@@ -8,6 +8,10 @@
 	background-color: grey;
 }
 
+.vertical-slider{
+	width: 100px;
+	transform: rotate(90deg)
+}
 textarea {
 	width: 100%;
 }
@@ -16,3 +20,11 @@ textarea {
 	max-height: 500px;
 }
 
+.slider-out {
+	font-style: italic;
+	border-style: solid;
+	border-radius: 5px;
+	background: lightgrey;
+	padding: 3px;
+	width: 5em
+}

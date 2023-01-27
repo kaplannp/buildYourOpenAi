@@ -4,19 +4,20 @@ class ApiManager:
     def __init__(self, apiKey):
         openai.api_key = apiKey 
 
-    def prompt(self, prompt, model="text-davinci-003"):
-        #openai doesn't seem to have a way to progamatically count tokens!
-        #they use this heuristic
-        tokens = int(len(prompt) / 4)
-        MAX_TOKENS = 4096
-        BUFFER = 200
-        N_TOKENS = MAX_TOKENS - tokens - BUFFER
-        N_TOKENS = 32 #DEBUG This prevents from using up the budget
+    def prompt(self, prompt, model="text-davinci-003", 
+            temperature=0.0, nTokens=None):
+        if nTokens == None:
+            completionTokens = 32
+        else:
+            #openai doesn't seem to have a way to progamatically count tokens!
+            #they use this heuristic
+            estimatedPromptTokens = int(len(prompt) / 4)
+            completionTokens = nTokens - estimatedPromptTokens
         response = openai.Completion.create(
                 model=model,
                 prompt=prompt,
-                temperature=1.0,
-                max_tokens=N_TOKENS
+                temperature=temperature,
+                max_tokens=completionTokens
                 )
         return response
     

@@ -14,26 +14,37 @@
 	  <h2> Prompt Box </h2>
         </div>
       </div>
-      <div class="row">
-	<div class="col-sm-6">
           <form method="post" action="{{ url_for("main")}}">
-            <textarea type="text" rows="4" name="textbox"> prompt </textarea>
-            <div>
-            <select name="model">
-              <option value="text-davinci-003">text-davinci-003 (default)</option>
-              {% for model in models %}
-                <option value="{{model}}">{{model}}</option>
-              {% endfor %}
-            </select>
-            <button class="btn btn-default" type="submit" name="submitPrompt">
-              submit
-            </button>
-            <button class="btn btn-default" type="submit" name="clear">
-              clear
-            </button>
-                </div>
+      	    <div class="row">
+	      <div class="col-sm-6">
+		<textarea type="text" rows="4" name="textbox"> prompt </textarea>
+	      </div>
+	      <div class="col-sm-6">
+		<label for="temperature" class="form-label">Temperature</label>
+		<output class="slider-out">0</output>
+		<input type="range" class="form-range vertical-slider" name="temperature" id="temperature" value=0 max=1 min=0 step=".01" oninput="this.previousElementSibling.value = this.value">
+		<label for="nTokens" class="form-label">Tokens</label>
+		<output class="slider-out">32</output>
+		<input type="range" class="form-range vertical-slider" id="nTokens" name="nTokens" max=4080 value=32 min=0 step="1" oninput="this.previousElementSibling.value = this.value">
+	      </div>
+	    <div>
+      	    <div class="row">
+	      <div class="col-sm-6">
+		<select name="model">
+		  <option value="text-davinci-003">text-davinci-003 (default)</option>
+		  {% for model in models %}
+		    <option value="{{model}}">{{model}}</option>
+		  {% endfor %}
+		</select>
+		<button class="btn btn-default" type="submit" name="submitPrompt">
+		  submit
+		</button>
+		<button class="btn btn-default" type="submit" name="clear">
+		  clear
+		</button>
+	      </div>
+	    <div>
           </form>
-        </div>
       </div>
       <div class="row">
 	<div class="col-sm-6 conversation overflow-auto">

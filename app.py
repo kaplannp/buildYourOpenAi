@@ -205,35 +205,57 @@ class TemplateRenderer:
 class Handler(ABC):
     '''
     abstract class for handler. Must implement handle method.
+    @method handle(request, templateGen)
     '''
 
     @abstractmethod
     def handle(self, request, templateGen):
         '''
         updates template generator in accordance to request passed
-        @param Request : the post request object
-        @param templateGen : the template generator to update
+        @param Request request: the post request object
+        @param TemplateRenderer templateGen : the template generator to update
         '''
         pass
 
 class SubmitButtonHandler(Handler):
     '''
-    
+    Handler for the submission of a prompt.
+    Also responsible for keeping track of responses and prompts, and
+    updating those things/clearing them. This violates single responsibility
+    prinicple, and probably should be refactored if this area is developed, but
+    this code has been fairly stable.
+    @method clear()
     '''
 
     def __init__(self, apiManager):
+        '''
+        @param ApiManager apiManager: interface to API
+        '''
         self._responses = []
         self._prompts = []
         self._apiManager = apiManager
 
     def clear(self):
+        '''
+        clears responses and prompts
+        '''
         self._responses = []
         self._prompts = []
 
     def handle(self, request, templateGen):
+        '''
+        on submit of prompt, queries the API, then adds the response/prompt
+        pair to datastructures in this class. Finally sets the TemplateRenderer
+        in accordance to those updated values.
+        @param Request request: the post request object
+        @param TemplateRenderer templateGen : the template generator to update
+        '''
         prompt = request.form.get('textbox')
         model = request.form.get("model")
-        response = self._apiManager.prompt(prompt, model=model)
+        temperature = float(request.form.get("temperature"))
+        nTokens = int(request.form.get("nTokens"))
+        response = self._apiManager.prompt(
+                prompt, model=model, temperature=temperature, nTokens=nTokens)
         completion = response["choices"][0]["text"]
         self._prompts.append(prompt)
         self._responses.append(completion)
@@ -241,24 +263,54 @@ class SubmitButtonHandler(Handler):
         templateGen.set("conversation", conversation)
 
 class ClearButtonHandler(Handler):
+    '''
+    Handles a press of the clear button by calling clear of the submit handler.
+    Maintains a copy of the SubmitButtonHandler
+    '''
 
     def __init__(self, submitButtonHandler):
-        #note you need submit Button handler because you should clear it's list
+        '''
+        @param SubmitButtonHandler submitButtonHandler: the handler for a submit
+        '''
         self._submitButtonHandler = submitButtonHandler
 
     def handle(self, request, templateGen):
+        '''
+        clears the conversation, and sets the template generator in accordance.
+        '''
         self._submitButtonHandler.clear()
         templateGen.set("conversation", [])
 
 class ApiDataCache:
+    '''
+    maintains a cache of response data from the ApiManager. Is responsible for
+    refreshing response data, for storing that data, and for supplying it to
+    classes that need it. This permits a centralized container for the data.
+    If you ever build more than two of these for the same ApiManager, things
+    would get strange. This class could be refactored to make such a situation
+    impossible. As it is, just don't do it.
+    @method refreshFileData()
+    @method refreshFineTunes()
+    @method refreshModels()
+    @method refresh()
+    @method getFileData()
+    @method getFineTunes()
+    @method getModels()
+    '''
 
     def __init__(self, apiManager):
+        '''
+        @param ApiManager apiManager
+        '''
         self._apiManager = apiManager
         self._fileData = []
         self._fineTunes = []
         self._models = []
 
     def refresh(self):
+        '''
+        Refreshes all api data
+        '''
         self.refreshFileData()
         self.refreshFineTunes()
         self.refreshModels()
@@ -285,16 +337,33 @@ class ApiDataCache:
         return self._models
 
 class ApiDataParser:
+    '''
+    The response data provided by the API generally needs to be processed into
+    something more usable for other parts of the application. This class
+    contains methods for that processing
+    '''
 
     def __init__(self, filenameLookup):
+        '''
+        @param PersistantAppData filenameLookup: to map filenames from api file
+          ids
+        '''
         self._filenameLookup = filenameLookup
 
     def getModelnames(self, respModels):
+        '''
+        @param dict respModels: the Api response of models
+        @returns list<string> the modelnames
+        '''
         modelnames = [model["id"] for model in respModels 
                 if model["owned_by"] == USER]
         return modelnames
 
     def getFilenames(self, respFileData):
+        '''
+        @param dict respFileData: the Api response of files
+        @returns list<tuple<string>>: fileid followed by filename
+        '''
         filenames = []
         for fileDatum in respFileData:
             fileid = fileDatum["id"]
@@ -307,7 +376,8 @@ class ApiDataParser:
     
     def getFineTunes(self, respFineTunes):
         '''
-        creates a 2d array (list of lists) where each row is:
+        @param dict respFineTunes: the Api response of fine tunes
+        @returns list<list<string>: 2d array where each row is:
           + finetune id
           + modelProduced
           + baseModel
@@ -325,13 +395,27 @@ class ApiDataParser:
 
 
 class DeleteModelHandler(Handler):
+    '''
+    Handler for Delete Model button.
+    '''
 
     def __init__(self, apiManager, apiCache, dataParser):
+        '''
+        @param ApiManager apiManager: interaface to the api
+        @param ApiDataCache apiCache: the cache for api data
+        @param ApiDataParser dataParser: object to process api data
+        '''
         self._apiManager = apiManager
         self._apiCache = apiCache
         self._apiDataParser = dataParser
 
     def handle(self, request, templateGen):
+        '''
+        on press of delete model button, tells api to delete model selected, 
+        then refreshes model, and sets the templateGen.
+        @throws AssertionError: if you try to do this when createModel is
+          selected.
+        '''
         modelName = request.form["model"]
         assert(modelName != "createModel")
         resp = self._apiManager.deleteModel(modelName)
@@ -421,8 +505,9 @@ class UploadHandler(Handler):
         filename = secure_filename(fileStorage.filename)
         assert(filename not in self._filenameLookup.values()),\
                 "Filename has already been uploaded. Please change name"
-        fileStorage.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        resp = self._apiManager.uploadFile(filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        fileStorage.save(filepath)
+        resp = self._apiManager.uploadFile(filepath)
         self._filenameLookup[resp['id']] = filename
         self._apiCache.refreshFileData()
         filenames = self._apiDataParser.getFilenames(
