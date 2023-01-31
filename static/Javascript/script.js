@@ -4,29 +4,29 @@
  */
 
 $(document).ready(function() {
-    console.log("running!");
+    var persistentInputsValues = 
+    	JSON.parse(localStorage.getItem("persistentInputsValues")) || {};
+    var $persistentInputs = $(".promptKnob, #promptModelSelect");
+    console.log($persistentInputs.length)
     
-    var promptKnobValues = 
-    	JSON.parse(localStorage.getItem("promptKnobValues")) || {};
-    var $promptKnobs = $(".promptKnob");
-    
-    $promptKnobs.on("change", function(){
+    $persistentInputs.on("change", function(){
       console.log("func called!");
-      $promptKnobs.each(function(){
-        promptKnobValues[this.id] = this.value;
+      $persistentInputs.each(function(){
+        persistentInputsValues[this.id] = this.value;
       });
-      localStorage.setItem("promptKnobValues", JSON.stringify(promptKnobValues));
+      localStorage.setItem("persistentInputsValues", JSON.stringify(persistentInputsValues));
     });
     
     
-    $.each(promptKnobValues, function(key, value) {
+    $.each(persistentInputsValues, function(key, value) {
       selection = $("#" + key);
       selection.prop('value', value);
       selection.each(function(){
-	this.previousElementSibling.value = this.value
+        prevEl = this.previousElementSibling;
+        if (prevEl !== null && (prevEl.className == "slider-out")){
+          prevEl.value = this.value;
+        }
       });
     });
-    
-    console.log(JSON.parse(localStorage.getItem("promptKnobValues")));
-    
+
 });
