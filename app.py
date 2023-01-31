@@ -274,8 +274,8 @@ class SubmitButtonHandler(Handler):
         response = self._apiManager.prompt(
                 prompt, model=model, temperature=temperature, nTokens=nTokens)
         completion = response["choices"][0]["text"]
-        self._prompts.append(latestInput)
-        self._responses.append(completion)
+        self._prompts.insert(0, latestInput)
+        self._responses.insert(0, completion)
         conversation=list(zip(self._prompts, self._responses))
         templateGen.set("conversation", conversation)
 
