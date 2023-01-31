@@ -34,6 +34,9 @@
 	      <div class="col-sm-6">
 		<select name="model">
 		  <option value="text-davinci-003">text-davinci-003 (default)</option>
+		  <option value="text-babbage-001">text-babbage-001</option>
+		  <option value="text-curie-001">text-curie-001</option>
+		  <option value="text-ada-001">text-ada-001</option>
 		  {% for model in models %}
 		    <option value="{{model}}">{{model}}</option>
 		  {% endfor %}

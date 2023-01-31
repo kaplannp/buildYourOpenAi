@@ -229,13 +229,15 @@ class SubmitButtonHandler(Handler):
     updating those things/clearing them. This violates single responsibility
     prinicple, and probably should be refactored if this area is developed, but
     this code has been fairly stable.
-    @method clear()
+    @method clear() : clears the prompts and responses
     '''
 
     def __init__(self, apiManager):
         '''
         @param ApiManager apiManager: interface to API
         '''
+        #prompts and responses are stored in the order in which they are added,
+        #first at index 0
         self._responses = []
         self._prompts = []
         self._apiManager = apiManager
@@ -248,6 +250,11 @@ class SubmitButtonHandler(Handler):
         self._prompts = []
 
     def _generateFeed(self):
+        '''
+        creates a string version of the feed, in order first at start of string.
+        This is designed for the model prompting
+        @return string: the feed
+        '''
         feed = []
         for prompt, response in zip(self._prompts, self._responses):
             feed.append(prompt)
@@ -267,16 +274,16 @@ class SubmitButtonHandler(Handler):
         '''
         latestInput = request.form.get('textbox')
         prompt = "{}\n{}".format(self._generateFeed(), latestInput)
-        print(prompt)
         model = request.form.get("model")
         temperature = float(request.form.get("temperature"))
         nTokens = int(request.form.get("nTokens"))
         response = self._apiManager.prompt(
                 prompt, model=model, temperature=temperature, nTokens=nTokens)
         completion = response["choices"][0]["text"]
-        self._prompts.insert(0, latestInput)
-        self._responses.insert(0, completion)
+        self._prompts.append(latestInput)
+        self._responses.append(completion)
         conversation=list(zip(self._prompts, self._responses))
+        conversation.reverse()
         templateGen.set("conversation", conversation)
 
 class ClearButtonHandler(Handler):
@@ -449,16 +456,30 @@ class DeleteModelHandler(Handler):
         templateGen.set("models", modelNames)
 
 class DeleteFileHandler(Handler):
+    '''
+    Handle delete model button
+    '''
     
     def __init__(self, apiManager, apiCache, dataParser, filenameLookup):
+        '''
+        @param ApiManager apiManager: interaface to the api
+        @param ApiDataCache apiCache: the cache for api data
+        @param ApiDataParser dataParser: object to process api data
+        @param PersistentAppDadta filenameLookup: maps fileids to filenames
+        '''
         self._apiManager = apiManager
         self._apiCache = apiCache
         self._apiDataParser = dataParser
         self._filenameLookup = filenameLookup
 
     def handle(self, request, templateGen):
+        '''
+        on press of deleteFile, removes the file from the filenameLookup. Also 
+        deletes the file from the api. Finally, updates the template gen to be
+        aware of the changes
+        '''
         #the form.keys has other gunk too, so we compare it against filenames
-        #I was nice enough to throw an error if you can't find the country
+        #I was nice enough to throw an error if you can't find 
         delFile = ""
         filenames = self._apiDataParser.getFilenames(
             self._apiCache.getFileData())
@@ -479,20 +500,30 @@ class DeleteFileHandler(Handler):
         templateGen.set("files", filenames)
 
 class TrainHandler(Handler):
+    '''
+    Handle requests to train a model through finetune
+    '''
     
     def __init__(self, apiManager, apiCache, dataParser):
+        '''
+        @param ApiManager apiManager: interaface to the api
+        @param ApiDataCache apiCache: the cache for api data
+        @param ApiDataParser dataParser: object to process api data
+        '''
         self._apiManager = apiManager
         self._apiCache = apiCache
         self._apiDataParser = dataParser
 
     def handle(self, request, templateGen):
-        #TODO considering making the checkbox a multiple choice
-        #TODO this is untested. Difficult to make sure that the request has
-        #gone through without being able to either monitor the finetunes, or
-        #being able to run tests with the model
+        '''
+        If create model is selected, will train a model with sepecified file. If
+        a model is selected, will use that model as the base for training.
+        Refreshes fine tunes and models. Updates the template.
 
+        @throws assertion error if you didn't select a file
+        '''
         #the form.keys has other gunk too, so we compare it against filenames
-        #I was nice enough to throw an error if you can't find the country
+        #I was nice enough to throw an error if you can't find
         trainFile = ""
         filenames = self._apiDataParser.getFilenames(
             self._apiCache.getFileData())
@@ -518,14 +549,29 @@ class TrainHandler(Handler):
         templateGen.set("fineTunes", fineTunes)
 
 class UploadHandler(Handler):
+    '''
+    Handles the upload of a new file.
+    '''
     
     def __init__(self, apiManager, apiCache, dataParser, filenameLookup):
+        '''
+        @param ApiManager apiManager: interaface to the api
+        @param ApiDataCache apiCache: the cache for api data
+        @param ApiDataParser dataParser: object to process api data
+        @param PersistentAppDadta filenameLookup: maps fileids to filenames
+        '''
         self._apiManager = apiManager
         self._apiCache = apiCache
         self._apiDataParser = dataParser
         self._filenameLookup = filenameLookup
 
     def handle(self, request, templateGen):
+        '''
+        Places the uploaded file into a folder on local machine. Then uploads
+        the file to the api, refreshes the filenames, and udates the template
+        @throws assertion error: if you give invalid filename, or if it's not in
+          the filenameLooup
+        '''
         fileStorage = request.files["fileChooser"]
         assert(isValidFilename(fileStorage.filename)) #need to change for prod
         filename = secure_filename(fileStorage.filename)
@@ -541,12 +587,22 @@ class UploadHandler(Handler):
         templateGen.set("files", filenames)
 
 class RefreshHandler(Handler):
+    '''
+    Handles the refresh button
+    '''
 
     def __init__(self, apiCache, apiDataParser):
+        '''
+        @param ApiDataCache apiCache: the cache for api data
+        @param ApiDataParser dataParser: object to process api data
+        '''
         self._apiCache = apiCache
         self._apiDataParser = apiDataParser
 
     def handle(self, request, templateGen):
+        '''
+        refreshes everything, then updates the templateGen
+        '''
         self._apiCache.refresh()
         filenames = self._apiDataParser.getFilenames(
                 self._apiCache.getFileData())
@@ -587,4 +643,3 @@ controller.registerHandler("deleteModel", deleteModelHandler)
 @app.route("/", methods=("GET","POST"))
 def main():
     return controller.index(request)
-
