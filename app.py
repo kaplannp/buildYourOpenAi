@@ -10,6 +10,7 @@ from openAiApi import ApiManager
 
 
 USER="user-cvzkspjueh4uqrj9ppvbenwv"
+USER="iq-company"
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = "UploadedFiles"
 
@@ -232,6 +233,7 @@ class SubmitButtonHandler(Handler):
     @method clear() : clears the prompts and responses
     '''
 
+    PROMPT_SUFFIX="\n\n###\n\n"
     def __init__(self, apiManager):
         '''
         @param ApiManager apiManager: interface to API
@@ -257,9 +259,9 @@ class SubmitButtonHandler(Handler):
         '''
         feed = []
         for prompt, response in zip(self._prompts, self._responses):
-            feed.append(prompt)
+            feed.append(prompt+self.PROMPT_SUFFIX)
             feed.append(response)
-        return "\n".join(feed)
+        return "".join(feed)
             
 
     def handle(self, request, templateGen):
@@ -273,7 +275,7 @@ class SubmitButtonHandler(Handler):
         @param TemplateRenderer templateGen : the template generator to update
         '''
         latestInput = request.form.get('textbox')
-        prompt = "{}\n{}".format(self._generateFeed(), latestInput)
+        prompt = "{}{}{}".format(self._generateFeed(), latestInput, self.PROMPT_SUFFIX)
         model = request.form.get("model")
         temperature = float(request.form.get("temperature"))
         nTokens = int(request.form.get("nTokens"))
