@@ -10,9 +10,10 @@ class ApiManager:
             completionTokens = 32
         else:
             #openai doesn't seem to have a way to progamatically count tokens!
-            #they use this heuristic
-            estimatedPromptTokens = int(len(prompt) / 4)
-            completionTokens = nTokens - estimatedPromptTokens
+            #they use this heuristic. 4.0 recommended. 4.25 for extra security
+            estimatedPromptTokens = int(len(prompt) / 4.25)
+            #4000 hardcoded as buffer
+            completionTokens = min(nTokens,4000) - estimatedPromptTokens
         response = openai.Completion.create(
                 model=model,
                 prompt=prompt,
