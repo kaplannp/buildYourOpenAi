@@ -5,7 +5,7 @@ class ApiManager:
         openai.api_key = apiKey 
 
     def prompt(self, prompt, model="text-davinci-003", 
-            temperature=0.0, nTokens=None):
+            temperature=0.0, nTokens=None,stop="#####"):
         if nTokens == None:
             completionTokens = 32
         else:
@@ -18,7 +18,8 @@ class ApiManager:
                 model=model,
                 prompt=prompt,
                 temperature=temperature,
-                max_tokens=completionTokens
+                max_tokens=completionTokens,
+                stop=stop
                 )
         return response
     
